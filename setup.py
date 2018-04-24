@@ -1,8 +1,12 @@
 from setuptools import setup
 
+import codecs
 import io
+from os import path
 
-long_description = io.open('README.rst', encoding='utf8').read()
+def read(*parts):
+  file_path = path.join(path.dirname(__file__), *parts)
+  return codecs.open(file_path, encoding='utf-8').read()
 
 setup(
   name='lzstring',
@@ -13,7 +17,7 @@ setup(
   packages=['lzstring'],
   package_dir={'lzstring': 'lzstring'},
   package_data={},
-  long_description=long_description,
+  long_description=read('README.rst'),
   url='https://github.com/gkovacs/lz-string-python',
   download_url='https://github.com/gkovacs/lz-string-python',
   classifiers=[
