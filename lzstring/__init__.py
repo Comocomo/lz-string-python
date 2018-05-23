@@ -1,27 +1,91 @@
- #!/usr/bin/python
- # -*- coding: utf-8 -*-
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 from __future__ import division
 from __future__ import unicode_literals
 from __future__ import print_function
 from __future__ import absolute_import
 from builtins import range
-from builtins import int
 from builtins import chr
 from future import standard_library
+
 standard_library.install_aliases()
 from builtins import object
-import math
-import re
 
 
 class LZString(object):
-
     def __init__(self):
-        self.keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+        self.keyStrBase64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+        self.keyStrUriSafe = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$'
+        self.baseReverseDict = {}
+
+    def getBaseValue(self, alphabet, character):
+        if alphabet not in self.baseReverseDict:
+            self.baseReverseDict[alphabet] = {}
+            for i in xrange(len(alphabet)):
+                self.baseReverseDict[alphabet][alphabet[i]] = i
+
+        return self.baseReverseDict[alphabet][character]
+
+    def compressToBase64(self, input_string):
+        if input_string is None:
+            return ''
+
+        res = self._compress(input_string, 6, lambda i: self.keyStrBase64[i])
+
+        len_remainder = len(res) % 4
+
+        if len_remainder == 3:
+            return res + '='
+        elif len_remainder == 2:
+            return res + '=='
+        elif len_remainder == 1:
+            return res + '==='
+        else:
+            return res
+
+    def decompressFromBase64(self, input_string):
+        if input_string is None:
+            return ''
+        elif input_string == '':
+            return None
+
+        return self._decompress(len(input_string), 32, lambda i: self.getBaseValue(self.keyStrBase64, input_string[i]))
+
+    def compressToUTF16(self, input_string):
+        if input_string is None:
+            return ''
+
+        return self._compress(input_string, 15, lambda i: chr(i + 32)) + ' '
+
+    def decompressFromUTF16(self, input_string):
+        if input_string is None:
+            return ''
+        elif input_string == '':
+            return None
+
+        return self._decompress(len(input_string), 16384, lambda i: ord(input_string[i]) - 32)
+
+    def compressToEncodedURIComponent(self, input_string):
+        if input_string is None:
+            return ''
+
+        return self._compress(input_string, 6, lambda i: self.keyStrUriSafe[i])
+
+    def decompressFromEncodedURIComponent(self, input_string):
+        if input_string is None:
+            return ''
+        elif input_string == '':
+            return None
+
+        input_string = input_string.replace(' ', '+')
+        return self._decompress(len(input_string), 32, lambda i: self.getBaseValue(self.keyStrUriSafe, input_string[i]))
 
     def compress(self, uncompressed):
+        return self._compress(uncompressed, 16, lambda i: chr(i))
 
+    @staticmethod
+    def _compress(uncompressed, bitsPerChar, getCharFromInt):
         if uncompressed is None:
             return ''
 
@@ -59,9 +123,9 @@ class LZString(object):
                         for i in range(context_numBits):
                             context_data_val = (context_data_val << 1)
 
-                            if context_data_position == 15:
+                            if context_data_position == (bitsPerChar - 1):
                                 context_data_position = 0
-                                context_data_string += chr(context_data_val)
+                                context_data_string += getCharFromInt(context_data_val)
                                 context_data_val = 0
                             else:
                                 context_data_position += 1
@@ -71,9 +135,9 @@ class LZString(object):
                         for i in range(8):
                             context_data_val = (context_data_val << 1) | (value & 1)
 
-                            if context_data_position == 15:
+                            if context_data_position == (bitsPerChar - 1):
                                 context_data_position = 0
-                                context_data_string += chr(context_data_val)
+                                context_data_string += getCharFromInt(context_data_val)
                                 context_data_val = 0
                             else:
                                 context_data_position += 1
@@ -85,9 +149,9 @@ class LZString(object):
                         for i in range(context_numBits):
                             context_data_val = (context_data_val << 1) | value
 
-                            if context_data_position == 15:
+                            if context_data_position == (bitsPerChar - 1):
                                 context_data_position = 0
-                                context_data_string += chr(context_data_val)
+                                context_data_string += getCharFromInt(context_data_val)
                                 context_data_val = 0
                             else:
                                 context_data_position += 1
@@ -99,9 +163,9 @@ class LZString(object):
                         for i in range(16):
                             context_data_val = (context_data_val << 1) | (value & 1)
 
-                            if context_data_position == 15:
+                            if context_data_position == (bitsPerChar - 1):
                                 context_data_position = 0
-                                context_data_string += chr(context_data_val)
+                                context_data_string += getCharFromInt(context_data_val)
                                 context_data_val = 0
                             else:
                                 context_data_position += 1
@@ -115,16 +179,16 @@ class LZString(object):
                         context_numBits += 1
 
                     context_dictionaryToCreate.pop(context_w, None)
-                    #del context_dictionaryToCreate[context_w]
+                    # del context_dictionaryToCreate[context_w]
                 else:
                     value = context_dictionary[context_w]
 
                     for i in range(context_numBits):
                         context_data_val = (context_data_val << 1) | (value & 1)
 
-                        if context_data_position == 15:
+                        if context_data_position == (bitsPerChar - 1):
                             context_data_position = 0
-                            context_data_string += chr(context_data_val)
+                            context_data_string += getCharFromInt(context_data_val)
                             context_data_val = 0
                         else:
                             context_data_position += 1
@@ -146,9 +210,9 @@ class LZString(object):
                     for i in range(context_numBits):
                         context_data_val = (context_data_val << 1)
 
-                        if context_data_position == 15:
+                        if context_data_position == (bitsPerChar - 1):
                             context_data_position = 0
-                            context_data_string += chr(context_data_val)
+                            context_data_string += getCharFromInt(context_data_val)
                             context_data_val = 0
                         else:
                             context_data_position += 1
@@ -158,9 +222,9 @@ class LZString(object):
                     for i in range(8):
                         context_data_val = (context_data_val << 1) | (value & 1)
 
-                        if context_data_position == 15:
+                        if context_data_position == (bitsPerChar - 1):
                             context_data_position = 0
-                            context_data_string += chr(context_data_val)
+                            context_data_string += getCharFromInt(context_data_val)
                             context_data_val = 0
                         else:
                             context_data_position += 1
@@ -172,9 +236,9 @@ class LZString(object):
                     for i in range(context_numBits):
                         context_data_val = (context_data_val << 1) | value
 
-                        if context_data_position == 15:
+                        if context_data_position == (bitsPerChar - 1):
                             context_data_position = 0
-                            context_data_string += chr(context_data_val)
+                            context_data_string += getCharFromInt(context_data_val)
                             context_data_val = 0
                         else:
                             context_data_position += 1
@@ -186,9 +250,9 @@ class LZString(object):
                     for i in range(16):
                         context_data_val = (context_data_val << 1) | (value & 1)
 
-                        if context_data_position == 15:
+                        if context_data_position == (bitsPerChar - 1):
                             context_data_position = 0
-                            context_data_string += chr(context_data_val)
+                            context_data_string += getCharFromInt(context_data_val)
                             context_data_val = 0
                         else:
                             context_data_position += 1
@@ -202,16 +266,16 @@ class LZString(object):
                     context_numBits += 1
 
                 context_dictionaryToCreate.pop(context_w, None)
-                #del context_dictionaryToCreate[context_w]
+                # del context_dictionaryToCreate[context_w]
             else:
                 value = context_dictionary[context_w]
 
                 for i in range(context_numBits):
                     context_data_val = (context_data_val << 1) | (value & 1)
 
-                    if context_data_position == 15:
+                    if context_data_position == (bitsPerChar - 1):
                         context_data_position = 0
-                        context_data_string += chr(context_data_val)
+                        context_data_string += getCharFromInt(context_data_val)
                         context_data_val = 0
                     else:
                         context_data_position += 1
@@ -229,9 +293,9 @@ class LZString(object):
         for i in range(context_numBits):
             context_data_val = (context_data_val << 1) | (value & 1)
 
-            if context_data_position == 15:
+            if context_data_position == (bitsPerChar - 1):
                 context_data_position = 0
-                context_data_string += chr(context_data_val)
+                context_data_string += getCharFromInt(context_data_val)
                 context_data_val = 0
             else:
                 context_data_position += 1
@@ -241,235 +305,24 @@ class LZString(object):
         while True:
             context_data_val = (context_data_val << 1)
 
-            if context_data_position == 15:
-                context_data_string += chr(context_data_val)
+            if context_data_position == (bitsPerChar - 1):
+                context_data_string += getCharFromInt(context_data_val)
                 break
             else:
                 context_data_position += 1
 
         return context_data_string
 
-    def compressToBase64(self, string):
-        if string is None:
-            return ''
-
-        output = ''
-
-        chr1 = float('NaN')
-        chr2 = float('NaN')
-        chr3 = float('NaN')
-        enc1 = 0
-        enc2 = 0
-        enc3 = 0
-        enc4 = 0
-
-        i = 0
-
-        string = self.compress(string)
-        strlen = len(string)
-
-        while i < (strlen * 2):
-            if (i % 2) == 0:
-                chr1 = ord(string[int(i / 2)]) >> 8
-                chr2 = ord(string[int(i / 2)]) & 255
-
-                if (i / 2) + 1 < strlen:
-                    chr3 = ord(string[int((i / 2) + 1)]) >> 8
-                else:
-                    chr3 = float('NaN')
-            else:
-                chr1 = ord(string[int((i - 1) / 2)]) & 255
-                if (i + 1) / 2 < strlen:
-                    chr2 = ord(string[int((i + 1) / 2)]) >> 8
-                    chr3 = ord(string[int((i + 1) / 2)]) & 255
-                else:
-                    chr2 = float('NaN')
-                    chr3 = float('NaN')
-
-            i += 3
-
-            # python dont support bit operation with NaN like javascript
-            enc1 = chr1 >> 2
-            enc2 = ((chr1 & 3) << 4) | (chr2 >> 4 if not math.isnan(chr2) else 0)
-            enc3 = ((chr2 & 15 if not math.isnan(chr2) else 0) << 2) | (chr3 >> 6 if not math.isnan(chr3) else 0)
-            enc4 = (chr3 if not math.isnan(chr3) else 0) & 63
-
-            if math.isnan(chr2):
-                enc3 = 64
-                enc4 = 64
-            elif math.isnan(chr3):
-                enc4 = 64
-
-            output += self.keyStr[enc1] + self.keyStr[enc2] + self.keyStr[enc3] + self.keyStr[enc4]
-
-        return output
-
-    def compressToUTF16(self, string):
-
-        if string is None:
-            return ''
-
-        output = ''
-        c = 0
-        current = 0
-        status = 0
-
-        string = self.compress(string)
-
-        for i in range(len(string)):
-            c = ord(string[i])
-
-            if status == 0:
-                status += 1
-                output += chr(((c >> 1) + 32))
-                current = (c & 1) << 14
-            elif status == 1:
-                status += 1
-                output += chr(((current + (c >> 2)) + 32))
-                current = (c & 3) << 13
-            elif status == 2:
-                status += 1
-                output += chr(((current + (c >> 3)) + 32))
-                current = (c & 7) << 12
-            elif status == 3:
-                status += 1
-                output += chr(((current + (c >> 4)) + 32))
-                current = (c & 15) << 11
-            elif status == 4:
-                status += 1
-                output += chr(((current + (c >> 5)) + 32))
-                current = (c & 31) << 10
-            elif status == 5:
-                status += 1
-                output += chr(((current + (c >> 6)) + 32))
-                current = (c & 63) << 9
-            elif status == 6:
-                status += 1
-                output += chr(((current + (c >> 7)) + 32))
-                current = (c & 127) << 8
-            elif status == 7:
-                status += 1
-                output += chr(((current + (c >> 8)) + 32))
-                current = (c & 255) << 7
-            elif status == 8:
-                status += 1
-                output += chr(((current + (c >> 9)) + 32))
-                current = (c & 511) << 6
-            elif status == 9:
-                status += 1
-                output += chr(((current + (c >> 10)) + 32))
-                current = (c & 1023) << 5
-            elif status == 10:
-                status += 1
-                output += chr(((current + (c >> 11)) + 32))
-                current = (c & 2047) << 4
-            elif status == 11:
-                status += 1
-                output += chr(((current + (c >> 12)) + 32))
-                current = (c & 4095) << 3
-            elif status == 12:
-                status += 1
-                output += chr(((current + (c >> 13)) + 32))
-                current = (c & 8191) << 2
-            elif status == 13:
-                status += 1
-                output += chr(((current + (c >> 14)) + 32))
-                current = (c & 16383) << 1
-            elif status == 14:
-                status += 1
-                output += chr(((current + (c >> 15)) + 32))
-                output += chr((c & 32767) + 32)
-
-                status = 0
-
-        output += chr(current + 32)
-
-        return output
-
-    #written by https://github.com/v-python
-    def decompressFromUTF16(self, string):
-        if not string:
-            return ""
-
-        output = ""
-        status = 0
-        i = 0
-
-        while i < len(string):
-            c = ord(string[i]) - 32
-            i += 1
-
-            if status == 0:
-                status = 1
-                current = c << 1
-            elif status == 1:
-                status = 2
-                output += chr(current + (c >> 14))
-                current = (c & 16383) << 2
-            elif status == 2:
-                status = 3
-                output += chr(current + (c >> 13))
-                current = (c & 8191) << 3
-            elif status == 3:
-                status = 4
-                output += chr(current + (c >> 12))
-                current = (c & 4095) << 4
-            elif status == 4:
-                status = 5
-                output += chr(current + (c >> 11))
-                current = (c & 2047) << 5
-            elif status == 5:
-                status = 6
-                output += chr(current + (c >> 10))
-                current = (c & 1023) << 6
-            elif status == 6:
-                status = 7
-                output += chr(current + (c >> 9))
-                current = (c & 511) << 7
-            elif status == 7:
-                status = 8
-                output += chr(current + (c >> 8))
-                current = (c & 255) << 8
-            elif status == 8:
-                status = 9
-                output += chr(current + (c >> 7))
-                current = (c & 127) << 9
-            elif status == 9:
-                status = 10
-                output += chr(current + (c >> 6))
-                current = (c & 63) << 10
-            elif status == 10:
-                status = 11
-                output += chr(current + (c >> 5))
-                current = (c & 31) << 11
-            elif status == 11:
-                status = 12
-                output += chr(current + (c >> 4))
-                current = (c & 15) << 12
-            elif status == 12:
-                status = 13
-                output += chr(current + (c >> 3))
-                current = (c & 7) << 13
-            elif status == 13:
-                status = 14
-                output += chr(current + (c >> 2))
-                current = (c & 3) << 14
-            elif status == 14:
-                status = 15
-                output += chr(current + (c >> 1))
-                current = (c & 1) << 15
-            elif status == 15:
-                status = 0
-                output += chr(current + c)
-                current = (c & 1) << 15
-
-        return self.decompress(output)
-
     def decompress(self, compressed):
-
-        if (compressed is None) or (compressed == ''):
+        if compressed is None:
             return ''
+        elif compressed == '':
+            return None
 
+        return self._decompress(len(compressed), 32768, lambda i: compressed[i])
+
+    @staticmethod
+    def _decompress(length, reset_value, get_next_value):
         dictionary = {}
         enlargeIn = 4
         dictSize = 4
@@ -477,13 +330,12 @@ class LZString(object):
         (entry, result, w, c) = ('', '', '', '')
         (i, nnext, bits, resb, maxpower, power) = (0, 0, 0, 0, 0, 0)
 
-        data_string = compressed
-        data_val = ord(compressed[0])
-        data_position = 32768
+        data_val = get_next_value(0)
+        data_position = reset_value
         data_index = 1
 
         for i in range(3):
-            #dictionary[i] = i
+            # dictionary[i] = i
             dictionary[i] = ''
 
         bits = 0
@@ -495,8 +347,8 @@ class LZString(object):
             data_position >>= 1
 
             if data_position == 0:
-                data_position = 32768
-                data_val = ord(data_string[data_index])
+                data_position = reset_value
+                data_val = get_next_value(data_index)
                 data_index += 1
 
             bits |= (1 if resb > 0 else 0) * power
@@ -513,8 +365,8 @@ class LZString(object):
                 data_position >>= 1
 
                 if data_position == 0:
-                    data_position = 32768
-                    data_val = ord(data_string[data_index])
+                    data_position = reset_value
+                    data_val = get_next_value(data_index)
                     data_index += 1
 
                 bits |= (1 if resb > 0 else 0) * power
@@ -534,9 +386,9 @@ class LZString(object):
                 data_position >>= 1
 
                 if data_position == 0:
-                    data_position = 32768
-                    if data_index < len(data_string):
-                        data_val = ord(data_string[data_index])
+                    data_position = reset_value
+                    if data_index < length:
+                        data_val = get_next_value(data_index)
                     else:
                         data_val = None
                     data_index += 1
@@ -553,7 +405,7 @@ class LZString(object):
         w = result
 
         while True:
-            if data_index > len(data_string):
+            if data_index > length:
                 return ''
 
             bits = 0
@@ -568,9 +420,9 @@ class LZString(object):
                 data_position >>= 1
 
                 if data_position == 0:
-                    data_position = 32768
-                    if data_index < len(data_string):
-                        data_val = ord(data_string[data_index])
+                    data_position = reset_value
+                    if data_index < length:
+                        data_val = get_next_value(data_index)
                     else:
                         data_val = None
                     data_index += 1
@@ -590,8 +442,8 @@ class LZString(object):
                     data_position >>= 1
 
                     if data_position == 0:
-                        data_position = 32768
-                        data_val = ord(data_string[data_index])
+                        data_position = reset_value
+                        data_val = get_next_value(data_index)
                         data_index += 1
 
                     bits |= (1 if resb > 0 else 0) * power
@@ -611,8 +463,8 @@ class LZString(object):
                     data_position >>= 1
 
                     if data_position == 0:
-                        data_position = 32768
-                        data_val = ord(data_string[data_index])
+                        data_position = reset_value
+                        data_val = get_next_value(data_index)
                         data_index += 1
 
                     bits |= (1 if resb > 0 else 0) * power
@@ -648,50 +500,3 @@ class LZString(object):
             if enlargeIn == 0:
                 enlargeIn = pow(2, numBits)
                 numBits += 1
-
-    def decompressFromBase64(self, iinput):
-        if iinput is None:
-            return ''
-
-        output = ""
-        ol = 0
-        output_ = ''
-
-        i = 0
-
-        iinput = re.sub(r'[^A-Za-z0-9\+\/\=]', '', iinput)
-
-        while i < len(iinput):
-            enc1 = self.keyStr.index(iinput[i])
-            i += 1
-            enc2 = self.keyStr.index(iinput[i])
-            i += 1
-            enc3 = self.keyStr.index(iinput[i])
-            i += 1
-            enc4 = self.keyStr.index(iinput[i])
-            i += 1
-
-            chr1 = (enc1 << 2) | (enc2 >> 4)
-            chr2 = ((enc2 & 15) << 4) | (enc3 >> 2)
-            chr3 = ((enc3 & 3) << 6) | enc4
-
-            if (ol % 2) == 0:
-                output_ = chr1 << 8
-
-                if enc3 != 64:
-                    output += chr(output_ | chr2)
-
-                if enc4 != 64:
-                    output_ = chr3 << 8
-            else:
-                output = output + chr(output_ | chr1)
-
-                if enc3 != 64:
-                    output_ = chr2 << 8
-
-                if enc4 != 64:
-                    output += chr(output_ | chr3)
-
-            ol += 3
-
-        return self.decompress(output)
